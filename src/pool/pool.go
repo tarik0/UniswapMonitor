@@ -14,6 +14,7 @@ type Type uint8
 
 const (
 	UniswapV2 Type = iota + 1
+	UniswapV3
 )
 
 type Pool interface {
