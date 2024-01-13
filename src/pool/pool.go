@@ -3,7 +3,6 @@ package pool
 import (
 	"PoolHelper/src/token"
 	"github.com/ethereum/go-ethereum/common"
-	"math/big"
 )
 
 ///
@@ -21,5 +20,4 @@ type Pool interface {
 	Type() Type
 	Pair() token.Pair
 	Address() common.Address
-	Reserves() (*big.Int, *big.Int, uint64)
 }

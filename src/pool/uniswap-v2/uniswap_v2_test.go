@@ -9,6 +9,7 @@ import (
 
 const initHash = "0x96e8ac4277198ff8b6f785478aa9a39f403cb768dd02cbee326c3e7da348845f"
 
+// TestAddressCalculation tests the address calculation for a UniswapV2 pool.
 func TestAddressCalculation(t *testing.T) {
 	factory := common.HexToAddress("0x5c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f")
 	tokenA := common.HexToAddress("0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2")

@@ -7,31 +7,75 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"math/big"
+	"sync"
+	"time"
+)
+
+type FeeType uint64
+
+const (
+	MAX    FeeType = 10000
+	NORMAL FeeType = 3000
+	LOW    FeeType = 500
+	MIN    FeeType = 100
 )
 
 type UniswapV3Pool struct {
 	pair     *token.Pair
 	factory  common.Address
-	fee      uint64
+	fee      FeeType
 	initHash common.Hash
 
 	// slot
-	sqrtPriceX96               *big.Int
-	tick                       int64
-	observationIndex           uint16
-	observationCardinality     uint16
-	observationCardinalityNext uint16
-	feeProtocol                uint8
-	unlocked                   bool
+	slot                Slot0
+	lastUpdateBlock     uint64
+	lastUpdateTimestamp uint64
+	m                   *sync.RWMutex
 }
 
-func NewUniswapV3Pool(factory common.Address, initHash common.Hash, pair *token.Pair, fee uint64) *UniswapV3Pool {
+func NewUniswapV3Pool(factory common.Address, initHash common.Hash, pair *token.Pair, fee FeeType) *UniswapV3Pool {
 	return &UniswapV3Pool{
 		pair:     pair,
 		factory:  factory,
 		fee:      fee,
 		initHash: initHash,
 	}
+}
+
+///
+/// Slot
+///
+
+type Slot0 struct {
+	SqrtPriceX96               *big.Int
+	Tick                       *big.Int
+	ObservationIndex           uint16
+	ObservationCardinality     uint16
+	ObservationCardinalityNext uint16
+	FeeProtocol                uint8
+	Unlocked                   bool
+}
+
+func (p *UniswapV3Pool) UpdateSafe(slot Slot0, block uint64) {
+	p.m.Lock()
+	defer p.m.Unlock()
+
+	p.slot = slot
+	p.lastUpdateBlock = block
+	p.lastUpdateTimestamp = uint64(time.Now().Unix())
+}
+
+func (p *UniswapV3Pool) Update(slot Slot0, block uint64) {
+	p.slot = slot
+	p.lastUpdateBlock = block
+	p.lastUpdateTimestamp = uint64(time.Now().Unix())
+}
+
+func (p *UniswapV3Pool) Slot0() (Slot0, uint64, uint64) {
+	p.m.RLock()
+	defer p.m.RUnlock()
+
+	return p.slot, p.lastUpdateBlock, p.lastUpdateTimestamp
 }
 
 ///
@@ -56,7 +100,7 @@ func (p *UniswapV3Pool) Address() common.Address {
 		{Type: addrType},
 		{Type: addrType},
 		{Type: uint24Type},
-	}.Pack(token0, token1, new(big.Int).SetUint64(p.fee))
+	}.Pack(token0, token1, new(big.Int).SetUint64(uint64(p.fee)))
 	if err != nil {
 		panic(err)
 	}
@@ -69,8 +113,4 @@ func (p *UniswapV3Pool) Address() common.Address {
 	addressBytes := hash[:]
 
 	return common.BytesToAddress(addressBytes)
-}
-
-func (p *UniswapV3Pool) Reserves() (*big.Int, *big.Int, uint64) {
-	return nil, nil, 0
 }

@@ -7,6 +7,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"math/big"
 	"sync"
+	"time"
 )
 
 type UniswapV2Pool struct {
@@ -16,19 +17,21 @@ type UniswapV2Pool struct {
 	reserve1 *big.Int
 	initHash common.Hash
 
-	lastUpdateBlock uint64
-	m               *sync.RWMutex
+	lastUpdateBlock     uint64
+	lastUpdateTimestamp uint64
+	m                   *sync.RWMutex
 }
 
 func NewUniswapV2Pool(factory common.Address, initCode common.Hash, pair *token.Pair) *UniswapV2Pool {
 	return &UniswapV2Pool{
-		pair:            pair,
-		factory:         factory,
-		reserve0:        big.NewInt(0),
-		reserve1:        big.NewInt(0),
-		m:               &sync.RWMutex{},
-		initHash:        initCode,
-		lastUpdateBlock: 0,
+		pair:                pair,
+		factory:             factory,
+		reserve0:            big.NewInt(0),
+		reserve1:            big.NewInt(0),
+		m:                   &sync.RWMutex{},
+		initHash:            initCode,
+		lastUpdateBlock:     0,
+		lastUpdateTimestamp: 0,
 	}
 }
 
@@ -36,9 +39,18 @@ func NewUniswapV2Pool(factory common.Address, initCode common.Hash, pair *token.
 /// Reserves
 ///
 
+type Reserves struct {
+	Reserve0 *big.Int
+	Reserve1 *big.Int
+}
+
 func (p *UniswapV2Pool) UpdateSafe(reserve0 *big.Int, reserve1 *big.Int, block uint64) {
 	p.m.Lock()
 	defer p.m.Unlock()
+
+	if p.lastUpdateBlock > block {
+		return
+	}
 
 	p.reserve0.Set(reserve0)
 	p.reserve1.Set(reserve1)
@@ -48,7 +60,18 @@ func (p *UniswapV2Pool) UpdateSafe(reserve0 *big.Int, reserve1 *big.Int, block u
 func (p *UniswapV2Pool) Update(reserve0 *big.Int, reserve1 *big.Int, block uint64) {
 	p.reserve0.Set(reserve0)
 	p.reserve1.Set(reserve1)
+	p.lastUpdateTimestamp = uint64(time.Now().Unix())
 	p.lastUpdateBlock = block
+}
+
+func (p *UniswapV2Pool) Reserves() (Reserves, uint64, uint64) {
+	p.m.RLock()
+	defer p.m.RUnlock()
+
+	return Reserves{
+		Reserve0: new(big.Int).Set(p.reserve0),
+		Reserve1: new(big.Int).Set(p.reserve1),
+	}, p.lastUpdateBlock, p.lastUpdateTimestamp
 }
 
 ///
@@ -74,12 +97,4 @@ func (p *UniswapV2Pool) Address() common.Address {
 	addressBytes := hash[:]
 
 	return common.BytesToAddress(addressBytes)
-}
-
-func (p *UniswapV2Pool) Reserves() (*big.Int, *big.Int, uint64) {
-	p.m.RLock()
-	defer p.m.RUnlock()
-
-	// return a copy of the reserves
-	return new(big.Int).Set(p.reserve0), new(big.Int).Set(p.reserve1), p.lastUpdateBlock
 }

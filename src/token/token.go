@@ -23,7 +23,9 @@ type Pair struct {
 }
 
 func (p Pair) Equals(other Pair) bool {
-	return p.TokenA.Address == other.TokenA.Address && p.TokenB.Address == other.TokenB.Address
+	p0t0, p0t1 := p.Sort()
+	p1t0, p1t1 := other.Sort()
+	return p0t0 == p1t0 && p0t1 == p1t1
 }
 
 func (p Pair) Sort() (common.Address, common.Address) {
