@@ -49,10 +49,10 @@ func NewUniswapV3Pool(factory common.Address, initHash common.Hash, pair *token.
 type Slot0 struct {
 	SqrtPriceX96               *big.Int
 	Tick                       *big.Int
-	ObservationIndex           uint16
-	ObservationCardinality     uint16
-	ObservationCardinalityNext uint16
-	FeeProtocol                uint8
+	ObservationIndex           *big.Int
+	ObservationCardinality     *big.Int
+	ObservationCardinalityNext *big.Int
+	FeeProtocol                *big.Int
 	Unlocked                   bool
 }
 

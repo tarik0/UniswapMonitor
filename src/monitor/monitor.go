@@ -66,9 +66,9 @@ func (m *Monitor) RemoveTokenSafe(address common.Address) {
 	}
 }
 
-// UpdateTokenStates updates the token states for all tokens in the cache.
+// InitializeTokens updates the token states for all tokens in the cache.
 // It uses the multicaller to fetch the data.
-func (m *Monitor) UpdateTokenStates(ctx context.Context, multicaller multicaller.Multicaller, block uint64) ([]token.Token, error) {
+func (m *Monitor) InitializeTokens(ctx context.Context, multicaller multicaller.Multicaller, block uint64) ([]token.Token, error) {
 	// fetch addresses
 	m.poolsMutex.RLock()
 	addresses := make([]common.Address, 0)
@@ -192,9 +192,9 @@ func (m *Monitor) FindPoolsV3(factory common.Address, initHash common.Hash, fees
 	return newPools
 }
 
-// UpdatePoolStates updates the pool states for all pools in the cache.
+// InitializePools updates the pool states for all pools in the cache.
 // It uses the multicaller to fetch the data.
-func (m *Monitor) UpdatePoolStates(ctx context.Context, multicaller multicaller.Multicaller, block uint64) error {
+func (m *Monitor) InitializePools(ctx context.Context, multicaller multicaller.Multicaller, block uint64) error {
 	v2Pools := make([]common.Address, 0)
 	v3Pools := make([]common.Address, 0)
 

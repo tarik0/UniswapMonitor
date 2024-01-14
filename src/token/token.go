@@ -1,6 +1,9 @@
 package token
 
-import "github.com/ethereum/go-ethereum/common"
+import (
+	"github.com/ethereum/go-ethereum/common"
+	"math/big"
+)
 
 ///
 /// Token
@@ -8,7 +11,7 @@ import "github.com/ethereum/go-ethereum/common"
 
 type Token struct {
 	Address  common.Address
-	Decimals uint8
+	Decimals *big.Int
 	Name     string
 	Symbol   string
 }
