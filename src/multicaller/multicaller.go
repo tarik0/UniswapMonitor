@@ -17,5 +17,5 @@ type ClientDispatcher interface {
 type Multicaller interface {
 	FetchReserves(context.Context, []common.Address, uint64) ([]uniswapv2.Reserves, error)
 	FetchSlots(context.Context, []common.Address, uint64) ([]uniswapv3.Slot0, error)
-	FetchTokens(context.Context, []common.Address, uint64) ([]token.Token, error)
+	FetchTokens(context.Context, []common.Address, uint64) ([]token.ERC20, error)
 }

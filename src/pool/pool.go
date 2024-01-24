@@ -9,15 +9,9 @@ import (
 /// Pool
 /// Represents a generic trading pool.
 
-type Type uint8
-
-const (
-	UniswapV2 Type = iota + 1
-	UniswapV3
-)
-
-type Pool interface {
-	Type() Type
+type Pool[State any] interface {
 	Pair() token.Pair
 	Address() common.Address
+	Update(State, uint64)
+	State() (State, uint64, uint64)
 }

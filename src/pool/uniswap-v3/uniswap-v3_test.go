@@ -16,10 +16,10 @@ func TestAddressCalculation(t *testing.T) {
 	token1 := common.HexToAddress("0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2")
 
 	p := uniswap_v3.NewUniswapV3Pool(factory, common.HexToHash(initHash), &token.Pair{
-		TokenA: token.Token{
+		TokenA: token.ERC20{
 			Address: token0,
 		},
-		TokenB: token.Token{
+		TokenB: token.ERC20{
 			Address: token1,
 		},
 	}, 3000)

@@ -1,12 +1,10 @@
 package uniswap_v2
 
 import (
-	"PoolHelper/src/pool"
 	"PoolHelper/src/token"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"math/big"
-	"sync"
 	"time"
 )
 
@@ -19,7 +17,6 @@ type UniswapV2Pool struct {
 
 	lastUpdateBlock     uint64
 	lastUpdateTimestamp uint64
-	m                   *sync.RWMutex
 }
 
 func NewUniswapV2Pool(factory common.Address, initCode common.Hash, pair *token.Pair) *UniswapV2Pool {
@@ -28,7 +25,6 @@ func NewUniswapV2Pool(factory common.Address, initCode common.Hash, pair *token.
 		factory:             factory,
 		reserve0:            big.NewInt(0),
 		reserve1:            big.NewInt(0),
-		m:                   &sync.RWMutex{},
 		initHash:            initCode,
 		lastUpdateBlock:     0,
 		lastUpdateTimestamp: 0,
@@ -36,50 +32,12 @@ func NewUniswapV2Pool(factory common.Address, initCode common.Hash, pair *token.
 }
 
 ///
-/// Reserves
+/// State
 ///
 
 type Reserves struct {
 	Reserve0 *big.Int
 	Reserve1 *big.Int
-}
-
-func (p *UniswapV2Pool) UpdateSafe(reserve0 *big.Int, reserve1 *big.Int, block uint64) {
-	p.m.Lock()
-	defer p.m.Unlock()
-
-	if p.lastUpdateBlock > block {
-		return
-	}
-
-	p.reserve0.Set(reserve0)
-	p.reserve1.Set(reserve1)
-	p.lastUpdateBlock = block
-}
-
-func (p *UniswapV2Pool) Update(reserve0 *big.Int, reserve1 *big.Int, block uint64) {
-	p.reserve0.Set(reserve0)
-	p.reserve1.Set(reserve1)
-	p.lastUpdateTimestamp = uint64(time.Now().Unix())
-	p.lastUpdateBlock = block
-}
-
-func (p *UniswapV2Pool) Reserves() (Reserves, uint64, uint64) {
-	p.m.RLock()
-	defer p.m.RUnlock()
-
-	return Reserves{
-		Reserve0: new(big.Int).Set(p.reserve0),
-		Reserve1: new(big.Int).Set(p.reserve1),
-	}, p.lastUpdateBlock, p.lastUpdateTimestamp
-}
-
-///
-/// Pool Implementation
-///
-
-func (p *UniswapV2Pool) Type() pool.Type {
-	return pool.UniswapV2
 }
 
 func (p *UniswapV2Pool) Pair() token.Pair {
@@ -97,4 +55,18 @@ func (p *UniswapV2Pool) Address() common.Address {
 	addressBytes := hash[:]
 
 	return common.BytesToAddress(addressBytes)
+}
+
+func (p *UniswapV2Pool) Update(res Reserves, block uint64) {
+	p.reserve0.Set(res.Reserve0)
+	p.reserve1.Set(res.Reserve1)
+	p.lastUpdateTimestamp = uint64(time.Now().Unix())
+	p.lastUpdateBlock = block
+}
+
+func (p *UniswapV2Pool) State() (Reserves, uint64, uint64) {
+	return Reserves{
+		Reserve0: new(big.Int).Set(p.reserve0),
+		Reserve1: new(big.Int).Set(p.reserve1),
+	}, p.lastUpdateBlock, p.lastUpdateTimestamp
 }

@@ -1,13 +1,11 @@
 package uniswap_v3
 
 import (
-	"PoolHelper/src/pool"
 	"PoolHelper/src/token"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"math/big"
-	"sync"
 	"time"
 )
 
@@ -30,7 +28,6 @@ type UniswapV3Pool struct {
 	slot                Slot0
 	lastUpdateBlock     uint64
 	lastUpdateTimestamp uint64
-	m                   *sync.RWMutex
 }
 
 func NewUniswapV3Pool(factory common.Address, initHash common.Hash, pair *token.Pair, fee FeeType) *UniswapV3Pool {
@@ -54,36 +51,6 @@ type Slot0 struct {
 	ObservationCardinalityNext *big.Int
 	FeeProtocol                *big.Int
 	Unlocked                   bool
-}
-
-func (p *UniswapV3Pool) UpdateSafe(slot Slot0, block uint64) {
-	p.m.Lock()
-	defer p.m.Unlock()
-
-	p.slot = slot
-	p.lastUpdateBlock = block
-	p.lastUpdateTimestamp = uint64(time.Now().Unix())
-}
-
-func (p *UniswapV3Pool) Update(slot Slot0, block uint64) {
-	p.slot = slot
-	p.lastUpdateBlock = block
-	p.lastUpdateTimestamp = uint64(time.Now().Unix())
-}
-
-func (p *UniswapV3Pool) Slot0() (Slot0, uint64, uint64) {
-	p.m.RLock()
-	defer p.m.RUnlock()
-
-	return p.slot, p.lastUpdateBlock, p.lastUpdateTimestamp
-}
-
-///
-/// Pool Implementation
-///
-
-func (p *UniswapV3Pool) Type() pool.Type {
-	return pool.UniswapV3
 }
 
 func (p *UniswapV3Pool) Pair() token.Pair {
@@ -113,4 +80,14 @@ func (p *UniswapV3Pool) Address() common.Address {
 	addressBytes := hash[:]
 
 	return common.BytesToAddress(addressBytes)
+}
+
+func (p *UniswapV3Pool) Update(slot Slot0, block uint64) {
+	p.slot = slot
+	p.lastUpdateBlock = block
+	p.lastUpdateTimestamp = uint64(time.Now().Unix())
+}
+
+func (p *UniswapV3Pool) State() (Slot0, uint64, uint64) {
+	return p.slot, p.lastUpdateBlock, p.lastUpdateTimestamp
 }

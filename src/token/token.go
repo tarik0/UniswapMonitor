@@ -6,10 +6,10 @@ import (
 )
 
 ///
-/// Token
+/// ERC20
 /// Represents an ERC20 token.
 
-type Token struct {
+type ERC20 struct {
 	Address  common.Address
 	Decimals *big.Int
 	Name     string
@@ -21,8 +21,8 @@ type Token struct {
 /// Represents a pair of tokens.
 
 type Pair struct {
-	TokenA Token
-	TokenB Token
+	TokenA ERC20
+	TokenB ERC20
 }
 
 func (p Pair) Equals(other Pair) bool {
