@@ -58,7 +58,7 @@ func (p *UniswapV3Pool) Pair() token.Pair {
 }
 
 func (p *UniswapV3Pool) Address() common.Address {
-	token0, token1 := p.pair.Sort()
+	token0, token1 := p.pair.SortAddresses()
 
 	// abi.encode(token0, token1, fee)
 	addrType, _ := abi.NewType("address", "", nil)

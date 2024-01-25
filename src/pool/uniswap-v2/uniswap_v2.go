@@ -45,7 +45,7 @@ func (p *UniswapV2Pool) Pair() token.Pair {
 }
 
 func (p *UniswapV2Pool) Address() common.Address {
-	token0, token1 := p.pair.Sort()
+	token0, token1 := p.pair.SortAddresses()
 
 	data := append([]byte{0xff}, p.factory.Bytes()...)
 	data = append(data, crypto.Keccak256(token0.Bytes(), token1.Bytes())...)

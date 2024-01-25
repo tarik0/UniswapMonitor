@@ -14,4 +14,6 @@ type Pool[State any] interface {
 	Address() common.Address
 	Update(State, uint64)
 	State() (State, uint64, uint64)
+
+	// todo: PriceOf(token.ERC20) (*big.Int, uint64)
 }
