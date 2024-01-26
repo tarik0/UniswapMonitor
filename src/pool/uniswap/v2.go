@@ -1,16 +1,16 @@
-package uniswap_v2
+package uniswap
 
 import (
-	"PoolHelper/src/token"
+	"PoolHelper/src/structs/pair"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"math/big"
 	"time"
 )
 
-type UniswapV2Pool struct {
+type V2Pool struct {
 	factory  common.Address
-	pair     *token.Pair
+	pair     pair.Pair
 	reserve0 *big.Int
 	reserve1 *big.Int
 	initHash common.Hash
@@ -19,8 +19,8 @@ type UniswapV2Pool struct {
 	lastUpdateTimestamp uint64
 }
 
-func NewUniswapV2Pool(factory common.Address, initCode common.Hash, pair *token.Pair) *UniswapV2Pool {
-	return &UniswapV2Pool{
+func NewV2Pool(factory common.Address, initCode common.Hash, pair pair.Pair) *V2Pool {
+	return &V2Pool{
 		pair:                pair,
 		factory:             factory,
 		reserve0:            big.NewInt(0),
@@ -40,11 +40,11 @@ type Reserves struct {
 	Reserve1 *big.Int
 }
 
-func (p *UniswapV2Pool) Pair() token.Pair {
-	return *p.pair
+func (p *V2Pool) Pair() pair.Pair {
+	return p.pair
 }
 
-func (p *UniswapV2Pool) Address() common.Address {
+func (p *V2Pool) Address() common.Address {
 	token0, token1 := p.pair.SortAddresses()
 
 	data := append([]byte{0xff}, p.factory.Bytes()...)
@@ -57,14 +57,14 @@ func (p *UniswapV2Pool) Address() common.Address {
 	return common.BytesToAddress(addressBytes)
 }
 
-func (p *UniswapV2Pool) Update(res Reserves, block uint64) {
+func (p *V2Pool) Update(res Reserves, block uint64) {
 	p.reserve0.Set(res.Reserve0)
 	p.reserve1.Set(res.Reserve1)
 	p.lastUpdateTimestamp = uint64(time.Now().Unix())
 	p.lastUpdateBlock = block
 }
 
-func (p *UniswapV2Pool) State() (Reserves, uint64, uint64) {
+func (p *V2Pool) State() (Reserves, uint64, uint64) {
 	return Reserves{
 		Reserve0: new(big.Int).Set(p.reserve0),
 		Reserve1: new(big.Int).Set(p.reserve1),

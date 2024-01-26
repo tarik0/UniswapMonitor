@@ -1,11 +1,10 @@
 package cache_test
 
 import (
-	"PoolHelper/src/cache"
-	"PoolHelper/src/multicaller/generic"
-	uniswapv2 "PoolHelper/src/pool/uniswap-v2"
-	uniswapv3 "PoolHelper/src/pool/uniswap-v3"
-	"PoolHelper/src/token"
+	"PoolHelper/src3/cache"
+	"PoolHelper/src3/multicaller/generic"
+	uniswapv2 "PoolHelper/src3/pool/uniswap"
+	"PoolHelper/src3/token"
 	"context"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
@@ -68,7 +67,7 @@ func TestFindPoolsV3_Count(t *testing.T) {
 		}
 	}
 
-	feeTypes := []uniswapv3.FeeType{uniswapv3.MAX, uniswapv3.NORMAL, uniswapv3.LOW}
+	feeTypes := []uniswapv2.FeeType{uniswapv2.MAX, uniswapv2.NORMAL, uniswapv2.LOW}
 
 	p := m.ImportV3Pools(factory, common.HexToHash(initHash), feeTypes)
 	if len(p) != 10*len(feeTypes) {
@@ -101,7 +100,7 @@ func TestInitializeTokens(t *testing.T) {
 		client,
 	)
 
-	// cache
+	// newcache
 	m := cache.NewCache()
 
 	// to list
@@ -177,7 +176,7 @@ func TestInitializePools(t *testing.T) {
 	)
 
 	// add tokens
-	feeTiers := []uniswapv3.FeeType{uniswapv3.MAX, uniswapv3.NORMAL, uniswapv3.LOW, uniswapv3.MIN}
+	feeTiers := []uniswapv2.FeeType{uniswapv2.MAX, uniswapv2.NORMAL, uniswapv2.LOW, uniswapv2.MIN}
 	_tokens := []common.Address{
 		common.HexToAddress("0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"),
 		common.HexToAddress("0xdac17f958d2ee523a2206206994597c13d831ec7"),
@@ -237,7 +236,7 @@ func TestInitializePools(t *testing.T) {
 
 	// validate pool data
 	for _, pool := range m.PoolsV2() {
-		_p := pool.(*uniswapv2.UniswapV2Pool)
+		_p := pool.(*uniswapv2.V2Pool)
 		_res, blockNum, timestamp := _p.State()
 		if blockNum == 0 {
 			t.Errorf("wrong block number")
@@ -257,7 +256,7 @@ func TestInitializePools(t *testing.T) {
 		}
 	}
 	for _, pool := range m.PoolsV3() {
-		_p := pool.(*uniswapv3.UniswapV3Pool)
+		_p := pool.(*uniswapv2.UniswapV3Pool)
 		_s, blockNum, timestamp := _p.State()
 		if blockNum == 0 {
 			t.Errorf("wrong block number")

@@ -1,7 +1,7 @@
 package generic
 
 import (
-	"PoolHelper/src/multicaller"
+	"PoolHelper/src3/multicaller"
 	"context"
 	"errors"
 	"fmt"
@@ -57,7 +57,7 @@ func (m *MulticallContract) SplitCalls(calls []Call3) [][]Call3 {
 	for _, call := range calls {
 		// check if adding this call would exceed the max gas limit for the chunk
 		if callChunkGas+m.callCost > m.maxGas {
-			// if it exceeds, start a cache chunk
+			// if it exceeds, start a newcache chunk
 			callChunks = append(callChunks, callChunk)
 			callChunk = make([]Call3, 0)
 			callChunkGas = 0

@@ -1,7 +1,7 @@
 package generic_test
 
 import (
-	"PoolHelper/src/multicaller/generic"
+	"PoolHelper/src/multicall/generic"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"math/big"
@@ -10,7 +10,7 @@ import (
 
 func TestMulticallContract_SplitCalls(t *testing.T) {
 	callCost, maxGas := uint64(1), uint64(10)
-	m := generic.NewMulticall(common.BigToAddress(big.NewInt(0)), callCost, maxGas, abi.ABI{}, nil)
+	m := generic.NewCaller(common.BigToAddress(big.NewInt(0)), callCost, maxGas, abi.ABI{}, nil)
 
 	var calls []generic.Call3
 	for i := 0; i < 101; i++ {

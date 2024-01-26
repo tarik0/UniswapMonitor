@@ -1,11 +1,10 @@
 package cache
 
 import (
-	"PoolHelper/src/multicaller/generic"
-	"PoolHelper/src/pool"
-	uniswapv2 "PoolHelper/src/pool/uniswap-v2"
-	uniswapv3 "PoolHelper/src/pool/uniswap-v3"
-	"PoolHelper/src/token"
+	"PoolHelper/src3/multicaller/generic"
+	"PoolHelper/src3/pool"
+	uniswapv2 "PoolHelper/src3/pool/uniswap"
+	"PoolHelper/src3/token"
 	"context"
 	"errors"
 	"fmt"
@@ -27,11 +26,11 @@ type FactoryDetails[R any, F any] struct {
 	Pools       map[common.Address]pool.Pool[R]
 }
 
-// Cache is a cache for all tokens and pools.
+// Cache is a newcache for all tokens and pools.
 type Cache struct {
 	tokens   map[common.Address]token.ERC20
 	dexV2    map[common.Address]FactoryDetails[uniswapv2.Reserves, any]
-	dexV3    map[common.Address]FactoryDetails[uniswapv3.Slot0, uniswapv3.FeeType]
+	dexV3    map[common.Address]FactoryDetails[uniswapv2.Slot0, uniswapv2.FeeType]
 	lastSync uint64
 	m        *sync.RWMutex
 }
@@ -40,7 +39,7 @@ func NewCache() *Cache {
 	return &Cache{
 		tokens: make(map[common.Address]token.ERC20),
 		dexV2:  make(map[common.Address]FactoryDetails[uniswapv2.Reserves, any]),
-		dexV3:  make(map[common.Address]FactoryDetails[uniswapv3.Slot0, uniswapv3.FeeType]),
+		dexV3:  make(map[common.Address]FactoryDetails[uniswapv2.Slot0, uniswapv2.FeeType]),
 		m:      &sync.RWMutex{},
 	}
 }
@@ -49,7 +48,7 @@ func NewCache() *Cache {
 /// Tokens
 ///
 
-// AddToken adds a token to the cache.
+// AddToken adds a token to the newcache.
 // It overwrites the existing token if it already exists.
 func (m *Cache) AddToken(t token.ERC20) error {
 	// validate token
@@ -68,7 +67,7 @@ func (m *Cache) AddToken(t token.ERC20) error {
 	return nil
 }
 
-// RemoveToken removes a token from the cache.
+// RemoveToken removes a token from the newcache.
 // It does remove any pools that use this token.
 func (m *Cache) RemoveToken(address common.Address) error {
 	m.m.Lock()
@@ -129,24 +128,32 @@ func (m *Cache) Tokens() []token.ERC20 {
 /// Pools
 ///
 
-// RemovePool removes a pool from the cache.
-func (m *Cache) RemovePool(address common.Address) {
+// RemovePool removes a pool from the newcache.
+func (m *Cache) RemovePool(address common.Address) error {
 	m.m.Lock()
 	defer m.m.Unlock()
 
 	// remove pool
+	isDeleted := false
 	for _, dex := range m.dexV2 {
 		delete(dex.Pools, address)
 		if len(dex.Pools) == 0 {
 			delete(m.dexV2, dex.Factory)
+			isDeleted = true
 		}
 	}
 	for _, dex := range m.dexV3 {
 		delete(dex.Pools, address)
 		if len(dex.Pools) == 0 {
 			delete(m.dexV3, dex.Factory)
+			isDeleted = true
 		}
 	}
+
+	if isDeleted {
+		return nil
+	}
+	return fmt.Errorf("pool not found")
 }
 
 func (m *Cache) PoolsV2() []pool.Pool[uniswapv2.Reserves] {
@@ -163,11 +170,11 @@ func (m *Cache) PoolsV2() []pool.Pool[uniswapv2.Reserves] {
 	return pools
 }
 
-func (m *Cache) PoolsV3() []pool.Pool[uniswapv3.Slot0] {
+func (m *Cache) PoolsV3() []pool.Pool[uniswapv2.Slot0] {
 	m.m.RLock()
 	defer m.m.RUnlock()
 
-	pools := make([]pool.Pool[uniswapv3.Slot0], 0)
+	pools := make([]pool.Pool[uniswapv2.Slot0], 0)
 	for _, dex := range m.dexV3 {
 		for _, _pool := range dex.Pools {
 			pools = append(pools, _pool)
@@ -200,7 +207,7 @@ func (m *Cache) Pools() []interface{} {
 /// Utils
 ///
 
-func fetchSlots(ctx context.Context, m generic.Multicaller, targets []common.Address, blockNumber uint64) ([]uniswapv3.Slot0, error) {
+func fetchSlots(ctx context.Context, m generic.Multicaller, targets []common.Address, blockNumber uint64) ([]uniswapv2.Slot0, error) {
 	// prepare calls
 	calls := make([]generic.Call3, len(targets))
 	for i, target := range targets {
@@ -218,11 +225,11 @@ func fetchSlots(ctx context.Context, m generic.Multicaller, targets []common.Add
 	}
 
 	// decode results
-	slots := make([]uniswapv3.Slot0, len(targets))
+	slots := make([]uniswapv2.Slot0, len(targets))
 	for i, data := range result {
 		// pair doesn't exist.
 		if len(data.ReturnData) == 0 {
-			slots[i] = uniswapv3.Slot0{
+			slots[i] = uniswapv2.Slot0{
 				SqrtPriceX96:               big.NewInt(0),
 				Tick:                       big.NewInt(0),
 				ObservationIndex:           big.NewInt(0),
@@ -238,7 +245,7 @@ func fetchSlots(ctx context.Context, m generic.Multicaller, targets []common.Add
 			return nil, errors.New(fmt.Sprintf("wrong return data length: %v", len(data.ReturnData)))
 		}
 
-		slot := uniswapv3.Slot0{
+		slot := uniswapv2.Slot0{
 			SqrtPriceX96:               new(big.Int).SetBytes(data.ReturnData[0:32]),
 			Tick:                       new(big.Int).SetBytes(data.ReturnData[32:64]),
 			ObservationIndex:           new(big.Int).SetBytes(data.ReturnData[64:96]),
@@ -408,9 +415,9 @@ func (m *Cache) ImportV2Pools(factory common.Address, initCode common.Hash) []co
 				TokenA: tokenA,
 				TokenB: tokenB,
 			}
-			_pool := uniswapv2.NewUniswapV2Pool(factory, initCode, &pair)
+			_pool := uniswapv2.NewV2Pool(factory, initCode, &pair)
 
-			// add pool to cache
+			// add pool to newcache
 			if _, ok := m.dexV2[factory].Pools[_pool.Address()]; !ok {
 				m.dexV2[factory].Pools[_pool.Address()] = _pool
 				newPools = append(newPools, _pool.Address())
@@ -424,18 +431,18 @@ func (m *Cache) ImportV2Pools(factory common.Address, initCode common.Hash) []co
 // ImportV3Pools finds all Uniswap V3 pools for the given factory and init code.
 // It does not overwrite the existing pool if it already exists.
 // It appends the given fees to the existing fees.
-func (m *Cache) ImportV3Pools(factory common.Address, initCode common.Hash, fees []uniswapv3.FeeType) []common.Address {
+func (m *Cache) ImportV3Pools(factory common.Address, initCode common.Hash, fees []uniswapv2.FeeType) []common.Address {
 	m.m.Lock()
 	defer m.m.Unlock()
 
 	// create dex if not exists
 	isFound := false
 	if _, isFound = m.dexV3[factory]; !isFound {
-		m.dexV3[factory] = FactoryDetails[uniswapv3.Slot0, uniswapv3.FeeType]{
+		m.dexV3[factory] = FactoryDetails[uniswapv2.Slot0, uniswapv2.FeeType]{
 			Factory:     factory,
 			InitCode:    initCode,
 			PoolOptions: fees,
-			Pools:       make(map[common.Address]pool.Pool[uniswapv3.Slot0]),
+			Pools:       make(map[common.Address]pool.Pool[uniswapv2.Slot0]),
 		}
 	}
 
@@ -454,9 +461,9 @@ func (m *Cache) ImportV3Pools(factory common.Address, initCode common.Hash, fees
 					TokenA: tokenA,
 					TokenB: tokenB,
 				}
-				_pool := uniswapv3.NewUniswapV3Pool(factory, initCode, &pair, fee)
+				_pool := uniswapv2.NewUniswapV3Pool(factory, initCode, &pair, fee)
 
-				// add pool to cache
+				// add pool to newcache
 				if _, ok := m.dexV3[factory].Pools[_pool.Address()]; !ok {
 					newPools = append(newPools, _pool.Address())
 				}
@@ -467,7 +474,7 @@ func (m *Cache) ImportV3Pools(factory common.Address, initCode common.Hash, fees
 
 	if isFound {
 		// combine fees
-		var combined []uniswapv3.FeeType
+		var combined []uniswapv2.FeeType
 		copy(m.dexV3[factory].PoolOptions, combined)
 		for _, fee := range fees {
 			if !slices.Contains(m.dexV3[factory].PoolOptions, fee) {
@@ -476,11 +483,11 @@ func (m *Cache) ImportV3Pools(factory common.Address, initCode common.Hash, fees
 		}
 
 		// overwrite dex
-		m.dexV3[factory] = FactoryDetails[uniswapv3.Slot0, uniswapv3.FeeType]{
+		m.dexV3[factory] = FactoryDetails[uniswapv2.Slot0, uniswapv2.FeeType]{
 			Factory:     factory,
 			InitCode:    initCode,
 			PoolOptions: combined,
-			Pools:       make(map[common.Address]pool.Pool[uniswapv3.Slot0]),
+			Pools:       make(map[common.Address]pool.Pool[uniswapv2.Slot0]),
 		}
 	}
 
@@ -521,7 +528,7 @@ func (m *Cache) ImportTokens(ctx context.Context, tokens []common.Address, multi
 /// States
 ///
 
-// SyncAll updates the pool states for all pools in the cache.
+// SyncAll updates the pool states for all pools in the newcache.
 func (m *Cache) SyncAll(ctx context.Context, multicaller generic.Multicaller, block uint64) (error, time.Duration) {
 	// skip if already synced
 	if m.lastSync >= block {
@@ -530,7 +537,7 @@ func (m *Cache) SyncAll(ctx context.Context, multicaller generic.Multicaller, bl
 
 	var err error
 	res := make([]uniswapv2.Reserves, 0)
-	slots := make([]uniswapv3.Slot0, 0)
+	slots := make([]uniswapv2.Slot0, 0)
 
 	start := time.Now()
 	m.m.RLock()
@@ -605,7 +612,7 @@ func (m *Cache) Sync(ctx context.Context, multicaller generic.Multicaller, pools
 
 	var err error
 	res := make([]uniswapv2.Reserves, 0)
-	slots := make([]uniswapv3.Slot0, 0)
+	slots := make([]uniswapv2.Slot0, 0)
 
 	start := time.Now()
 	m.m.RLock()
@@ -631,7 +638,7 @@ func (m *Cache) Sync(ctx context.Context, multicaller generic.Multicaller, pools
 	}
 
 	// fetch uniswap v3 slots
-	v3Pools := make([]pool.Pool[uniswapv3.Slot0], 0)
+	v3Pools := make([]pool.Pool[uniswapv2.Slot0], 0)
 	for _, _pool := range pools {
 		if _poolV3, ok := m.dexV3[_pool]; ok {
 			v3Pools = append(v3Pools, _poolV3.Pools[_pool])

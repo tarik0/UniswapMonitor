@@ -1,21 +1,21 @@
-package uniswap_v3_test
+package uniswap_test
 
 import (
-	uniswap_v3 "PoolHelper/src/pool/uniswap-v3"
-	"PoolHelper/src/token"
+	"PoolHelper/src/pool/uniswap"
+	"PoolHelper/src/structs/pair"
+	"PoolHelper/src/structs/token"
 	"github.com/ethereum/go-ethereum/common"
 	"testing"
 )
 
-const initHash = "0xe34f199b19b2b4f47f68442619d555527d244f78a3297ea89325f843f87b8b54"
+const initHashV3 = "0xe34f199b19b2b4f47f68442619d555527d244f78a3297ea89325f843f87b8b54"
 
-// TestAddressCalculation tests the address calculation for a UniswapV3 pool.
-func TestAddressCalculation(t *testing.T) {
+func TestVV3AddressCalculation(t *testing.T) {
 	factory := common.HexToAddress("0x1f98431c8ad98523631ae4a59f267346ea31f984")
 	token0 := common.HexToAddress("0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599")
 	token1 := common.HexToAddress("0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2")
 
-	p := uniswap_v3.NewUniswapV3Pool(factory, common.HexToHash(initHash), &token.Pair{
+	p := uniswap.NewV3Pool(factory, common.HexToHash(initHashV3), pair.Pair{
 		TokenA: token.ERC20{
 			Address: token0,
 		},

@@ -1,7 +1,7 @@
-package uniswap_v3
+package uniswap
 
 import (
-	"PoolHelper/src/token"
+	"PoolHelper/src/structs/pair"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -9,19 +9,19 @@ import (
 	"time"
 )
 
-type FeeType uint64
+type V3FeeType uint64
 
 const (
-	MAX    FeeType = 10000
-	NORMAL FeeType = 3000
-	LOW    FeeType = 500
-	MIN    FeeType = 100
+	MAX    V3FeeType = 10000
+	NORMAL V3FeeType = 3000
+	LOW    V3FeeType = 500
+	MIN    V3FeeType = 100
 )
 
-type UniswapV3Pool struct {
-	pair     *token.Pair
+type V3Pool struct {
+	pair     pair.Pair
 	factory  common.Address
-	fee      FeeType
+	fee      V3FeeType
 	initHash common.Hash
 
 	// slot
@@ -30,8 +30,8 @@ type UniswapV3Pool struct {
 	lastUpdateTimestamp uint64
 }
 
-func NewUniswapV3Pool(factory common.Address, initHash common.Hash, pair *token.Pair, fee FeeType) *UniswapV3Pool {
-	return &UniswapV3Pool{
+func NewV3Pool(factory common.Address, initHash common.Hash, pair pair.Pair, fee V3FeeType) *V3Pool {
+	return &V3Pool{
 		pair:     pair,
 		factory:  factory,
 		fee:      fee,
@@ -53,11 +53,11 @@ type Slot0 struct {
 	Unlocked                   bool
 }
 
-func (p *UniswapV3Pool) Pair() token.Pair {
-	return *p.pair
+func (p *V3Pool) Pair() pair.Pair {
+	return p.pair
 }
 
-func (p *UniswapV3Pool) Address() common.Address {
+func (p *V3Pool) Address() common.Address {
 	token0, token1 := p.pair.SortAddresses()
 
 	// abi.encode(token0, token1, fee)
@@ -82,12 +82,12 @@ func (p *UniswapV3Pool) Address() common.Address {
 	return common.BytesToAddress(addressBytes)
 }
 
-func (p *UniswapV3Pool) Update(slot Slot0, block uint64) {
+func (p *V3Pool) Update(slot Slot0, block uint64) {
 	p.slot = slot
 	p.lastUpdateBlock = block
 	p.lastUpdateTimestamp = uint64(time.Now().Unix())
 }
 
-func (p *UniswapV3Pool) State() (Slot0, uint64, uint64) {
+func (p *V3Pool) State() (Slot0, uint64, uint64) {
 	return p.slot, p.lastUpdateBlock, p.lastUpdateTimestamp
 }
