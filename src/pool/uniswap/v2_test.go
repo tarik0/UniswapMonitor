@@ -1,8 +1,9 @@
-package uniswap_v2_test
+package uniswap_test
 
 import (
-	uniswap_v2 "PoolHelper/src/pool/uniswap-v2"
-	"PoolHelper/src/token"
+	"PoolHelper/src/pool/uniswap"
+	"PoolHelper/src/structs/pair"
+	"PoolHelper/src/structs/token"
 	"github.com/ethereum/go-ethereum/common"
 	"testing"
 )
@@ -15,7 +16,7 @@ func TestAddressCalculation(t *testing.T) {
 	tokenA := common.HexToAddress("0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2")
 	tokenB := common.HexToAddress("0xdac17f958d2ee523a2206206994597c13d831ec7")
 
-	p := uniswap_v2.NewUniswapV2Pool(factory, common.HexToHash(initHash), &token.Pair{
+	p := uniswap.NewV2Pool(factory, common.HexToHash(initHash), pair.Pair[any]{
 		TokenA: token.ERC20{
 			Address: tokenA,
 		},

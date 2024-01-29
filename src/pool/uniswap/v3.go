@@ -1,7 +1,7 @@
-package uniswap_v3
+package uniswap
 
 import (
-	"PoolHelper/src/token"
+	"PoolHelper/src/structs/pair"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -9,19 +9,18 @@ import (
 	"time"
 )
 
-type FeeType uint64
+type V3FeeType uint64
 
 const (
-	MAX    FeeType = 10000
-	NORMAL FeeType = 3000
-	LOW    FeeType = 500
-	MIN    FeeType = 100
+	MAX    V3FeeType = 10000
+	NORMAL V3FeeType = 3000
+	LOW    V3FeeType = 500
+	MIN    V3FeeType = 100
 )
 
-type UniswapV3Pool struct {
-	pair     *token.Pair
+type V3Pool struct {
+	pair     pair.Pair[V3FeeType]
 	factory  common.Address
-	fee      FeeType
 	initHash common.Hash
 
 	// slot
@@ -30,11 +29,10 @@ type UniswapV3Pool struct {
 	lastUpdateTimestamp uint64
 }
 
-func NewUniswapV3Pool(factory common.Address, initHash common.Hash, pair *token.Pair, fee FeeType) *UniswapV3Pool {
-	return &UniswapV3Pool{
+func NewV3Pool(factory common.Address, initHash common.Hash, pair pair.Pair[V3FeeType]) *V3Pool {
+	return &V3Pool{
 		pair:     pair,
 		factory:  factory,
-		fee:      fee,
 		initHash: initHash,
 	}
 }
@@ -53,12 +51,12 @@ type Slot0 struct {
 	Unlocked                   bool
 }
 
-func (p *UniswapV3Pool) Pair() token.Pair {
-	return *p.pair
+func (p *V3Pool) Pair() pair.Pair[V3FeeType] {
+	return p.pair
 }
 
-func (p *UniswapV3Pool) Address() common.Address {
-	token0, token1 := p.pair.Sort()
+func (p *V3Pool) Address() common.Address {
+	token0, token1 := p.pair.SortAddresses()
 
 	// abi.encode(token0, token1, fee)
 	addrType, _ := abi.NewType("address", "", nil)
@@ -67,7 +65,7 @@ func (p *UniswapV3Pool) Address() common.Address {
 		{Type: addrType},
 		{Type: addrType},
 		{Type: uint24Type},
-	}.Pack(token0, token1, new(big.Int).SetUint64(uint64(p.fee)))
+	}.Pack(token0, token1, new(big.Int).SetUint64(uint64(p.pair.PairOptions)))
 	if err != nil {
 		panic(err)
 	}
@@ -82,12 +80,16 @@ func (p *UniswapV3Pool) Address() common.Address {
 	return common.BytesToAddress(addressBytes)
 }
 
-func (p *UniswapV3Pool) Update(slot Slot0, block uint64) {
+func (p *V3Pool) Update(slot Slot0, block uint64) {
 	p.slot = slot
 	p.lastUpdateBlock = block
 	p.lastUpdateTimestamp = uint64(time.Now().Unix())
 }
 
-func (p *UniswapV3Pool) State() (Slot0, uint64, uint64) {
+func (p *V3Pool) State() (Slot0, uint64, uint64) {
 	return p.slot, p.lastUpdateBlock, p.lastUpdateTimestamp
+}
+
+func (p *V3Pool) Factory() common.Address {
+	return p.factory
 }
