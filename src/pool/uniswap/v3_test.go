@@ -15,14 +15,15 @@ func TestVV3AddressCalculation(t *testing.T) {
 	token0 := common.HexToAddress("0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599")
 	token1 := common.HexToAddress("0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2")
 
-	p := uniswap.NewV3Pool(factory, common.HexToHash(initHashV3), pair.Pair{
+	p := uniswap.NewV3Pool(factory, common.HexToHash(initHashV3), pair.Pair[uniswap.V3FeeType]{
 		TokenA: token.ERC20{
 			Address: token0,
 		},
 		TokenB: token.ERC20{
 			Address: token1,
 		},
-	}, 3000)
+		PairOptions: 3000,
+	})
 
 	expected := common.HexToAddress("0xcbcdf9626bc03e24f779434178a73a0b4bad62ed")
 	if p.Address() != expected {

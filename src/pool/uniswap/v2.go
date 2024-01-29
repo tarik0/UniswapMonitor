@@ -10,7 +10,7 @@ import (
 
 type V2Pool struct {
 	factory  common.Address
-	pair     pair.Pair
+	pair     pair.Pair[any]
 	reserve0 *big.Int
 	reserve1 *big.Int
 	initHash common.Hash
@@ -19,7 +19,7 @@ type V2Pool struct {
 	lastUpdateTimestamp uint64
 }
 
-func NewV2Pool(factory common.Address, initCode common.Hash, pair pair.Pair) *V2Pool {
+func NewV2Pool(factory common.Address, initCode common.Hash, pair pair.Pair[any]) *V2Pool {
 	return &V2Pool{
 		pair:                pair,
 		factory:             factory,
@@ -40,7 +40,7 @@ type Reserves struct {
 	Reserve1 *big.Int
 }
 
-func (p *V2Pool) Pair() pair.Pair {
+func (p *V2Pool) Pair() pair.Pair[any] {
 	return p.pair
 }
 
@@ -69,4 +69,8 @@ func (p *V2Pool) State() (Reserves, uint64, uint64) {
 		Reserve0: new(big.Int).Set(p.reserve0),
 		Reserve1: new(big.Int).Set(p.reserve1),
 	}, p.lastUpdateBlock, p.lastUpdateTimestamp
+}
+
+func (p *V2Pool) Factory() common.Address {
+	return p.factory
 }

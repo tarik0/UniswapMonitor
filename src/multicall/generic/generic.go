@@ -89,6 +89,12 @@ func (m *MulticallContract) Aggregate(ctx context.Context, calls []Call3, block 
 			return nil, err
 		}
 
+		// set block number
+		var callBlock *big.Int
+		if block != 0 {
+			callBlock = new(big.Int).SetUint64(block)
+		}
+
 		// call the contract
 		rawRes, err := m.client.CallContract(
 			ctx,
@@ -97,7 +103,7 @@ func (m *MulticallContract) Aggregate(ctx context.Context, calls []Call3, block 
 				Data: callsData,
 				Gas:  m.maxGas,
 			},
-			new(big.Int).SetUint64(block),
+			callBlock,
 		)
 		if err != nil {
 			return nil, err

@@ -19,9 +19,8 @@ const (
 )
 
 type V3Pool struct {
-	pair     pair.Pair
+	pair     pair.Pair[V3FeeType]
 	factory  common.Address
-	fee      V3FeeType
 	initHash common.Hash
 
 	// slot
@@ -30,11 +29,10 @@ type V3Pool struct {
 	lastUpdateTimestamp uint64
 }
 
-func NewV3Pool(factory common.Address, initHash common.Hash, pair pair.Pair, fee V3FeeType) *V3Pool {
+func NewV3Pool(factory common.Address, initHash common.Hash, pair pair.Pair[V3FeeType]) *V3Pool {
 	return &V3Pool{
 		pair:     pair,
 		factory:  factory,
-		fee:      fee,
 		initHash: initHash,
 	}
 }
@@ -53,7 +51,7 @@ type Slot0 struct {
 	Unlocked                   bool
 }
 
-func (p *V3Pool) Pair() pair.Pair {
+func (p *V3Pool) Pair() pair.Pair[V3FeeType] {
 	return p.pair
 }
 
@@ -67,7 +65,7 @@ func (p *V3Pool) Address() common.Address {
 		{Type: addrType},
 		{Type: addrType},
 		{Type: uint24Type},
-	}.Pack(token0, token1, new(big.Int).SetUint64(uint64(p.fee)))
+	}.Pack(token0, token1, new(big.Int).SetUint64(uint64(p.pair.PairOptions)))
 	if err != nil {
 		panic(err)
 	}
@@ -90,4 +88,8 @@ func (p *V3Pool) Update(slot Slot0, block uint64) {
 
 func (p *V3Pool) State() (Slot0, uint64, uint64) {
 	return p.slot, p.lastUpdateBlock, p.lastUpdateTimestamp
+}
+
+func (p *V3Pool) Factory() common.Address {
+	return p.factory
 }
