@@ -9,10 +9,29 @@ import (
 	"fmt"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"strings"
 	"time"
 )
+
+func subscribeHeaders(c *ethclient.Client) error {
+	// subscribe to new headers
+	headers := make(chan *types.Header)
+	sub, err := c.SubscribeNewHead(context.Background(), headers)
+	if err != nil {
+		return err
+	}
+
+	for {
+		select {
+		case err := <-sub.Err():
+			return err
+		case header := <-headers:
+			fmt.Println(header.Number)
+		}
+	}
+}
 
 var tokenList = []common.Address{
 	common.HexToAddress("0xdac17f958d2ee523a2206206994597c13d831ec7"), // Tether USD (USDT)
@@ -104,7 +123,7 @@ func newCaller(c *ethclient.Client) *generic.MulticallContract {
 
 	return generic.NewCaller(
 		common.HexToAddress("0xcA11bde05977b3631167028862bE2a173976CA11"),
-		30_000,
+		25_000,
 		30_000_000,
 		cAbi,
 		c,
@@ -125,7 +144,7 @@ func main() {
 	cV2 := uniswap.NewV2Cache()
 	cV3 := uniswap.NewV3Cache()
 
-	// get latest block
+	// get the latest block
 	block, err := client.BlockByNumber(context.Background(), nil)
 	if err != nil {
 		panic(err)
