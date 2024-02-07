@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"github.com/ethereum/go-ethereum"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rpc"
 	"sync"
 	"time"
@@ -14,27 +16,24 @@ var (
 	MaxRetriesError        = errors.New("max retries reached")
 )
 
-var (
-	MaxReconnectTimeout = 5 * time.Second
-)
-
 type RPCClientDispatcher interface {
 	EthSubscribe(ctx context.Context, channel interface{}, args ...interface{}) (*rpc.ClientSubscription, error)
 }
 
-type ItemWithContext[I any] struct {
-	Item    I
+type ItemWithContext[Type comparable] struct {
+	Item    Type
 	Context context.Context
 }
 
 // Subscription is a subscription for new events
 // It handles the inner subscription and reconnects if the subscription is closed
-type Subscription[Type any] struct {
+type Subscription[Type comparable] struct {
 	// connection
 	c          RPCClientDispatcher
 	m          sync.RWMutex
 	namespace  string
 	timeout    time.Duration
+	maxTimeout time.Duration
 	maxRetries int
 
 	// listener context
@@ -51,7 +50,7 @@ type Subscription[Type any] struct {
 }
 
 // NewSubscription creates a new client subscription
-func NewSubscription[Type any](c RPCClientDispatcher, namespace string, timeout time.Duration, maxRetries int) *Subscription[Type] {
+func NewSubscription[Type comparable](c RPCClientDispatcher, namespace string, timeout time.Duration, maxTimeout time.Duration, maxRetries int) *Subscription[Type] {
 	return &Subscription[Type]{
 		// connection
 		c:          c,
@@ -59,6 +58,7 @@ func NewSubscription[Type any](c RPCClientDispatcher, namespace string, timeout 
 		namespace:  namespace,
 		timeout:    timeout,
 		maxRetries: maxRetries,
+		maxTimeout: maxTimeout,
 
 		// listener
 		stopListen: make(chan bool),
@@ -72,6 +72,16 @@ func NewSubscription[Type any](c RPCClientDispatcher, namespace string, timeout 
 		outerCh: make(chan ItemWithContext[Type], 1),
 		errorCh: make(chan error, 1),
 	}
+}
+
+// NewBlockSubscription creates a new block subscription
+func NewBlockSubscription(c RPCClientDispatcher, timeout time.Duration, maxTimeout time.Duration, maxRetries int) *Subscription[*types.Header] {
+	return NewSubscription[*types.Header](c, "newHeads", timeout, maxTimeout, maxRetries)
+}
+
+// NewTxSubscription creates a new transaction subscription
+func NewTxSubscription(c RPCClientDispatcher, timeout time.Duration, maxTimeout time.Duration, maxRetries int) *Subscription[*common.Hash] {
+	return NewSubscription[*common.Hash](c, "newPendingTransactions", timeout, maxTimeout, maxRetries)
 }
 
 ///
@@ -133,7 +143,7 @@ func (c *Subscription[Type]) resubscribe() bool {
 	// attempt to resubscribe
 	for retryCount < c.maxRetries {
 		// exponential backoff
-		time.Sleep(exponentialBackoff(retryCount, MaxReconnectTimeout))
+		time.Sleep(exponentialBackoff(retryCount, c.maxTimeout))
 		retryCount++
 
 		// create a new context
@@ -187,6 +197,8 @@ func (c *Subscription[Type]) listen() {
 	c.listenWait.Add(1)
 	defer c.listenWait.Done()
 
+	var empty Type
+
 	// create a new context
 	// this context gets cancelled when a new item is received
 	ctx, cancel := context.WithCancel(context.Background())
@@ -201,6 +213,11 @@ func (c *Subscription[Type]) listen() {
 		default:
 			select {
 			case header := <-c.innerCh:
+				// skip if the header is nil
+				if header == empty {
+					continue
+				}
+
 				// cancel previous item context
 				cancel()
 
@@ -212,6 +229,11 @@ func (c *Subscription[Type]) listen() {
 					Context: ctx,
 				}
 			case err := <-c.innerSub.Err():
+				// skip if the error is nil
+				if err == nil {
+					continue
+				}
+
 				// cancel previous item context
 				cancel()
 
