@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"github.com/ethereum/go-ethereum"
+	"github.com/ethereum/go-ethereum/rpc"
 	"sync"
 	"time"
 )
@@ -18,7 +19,12 @@ var (
 )
 
 type RPCClientDispatcher interface {
-	Subscribe(ctx context.Context, namespace string, ch interface{}) (ethereum.Subscription, error)
+	EthSubscribe(ctx context.Context, channel interface{}, args ...interface{}) (*rpc.ClientSubscription, error)
+}
+
+type ItemWithContext[I any] struct {
+	Item    I
+	Context context.Context
 }
 
 // Subscription is a subscription for new events
@@ -26,55 +32,45 @@ type RPCClientDispatcher interface {
 type Subscription[Type any] struct {
 	// connection
 	c          RPCClientDispatcher
+	m          sync.RWMutex
 	namespace  string
 	timeout    time.Duration
 	maxRetries int
 
 	// listener context
-	listenCtx    context.Context
-	listenCancel context.CancelFunc
+	stopListen chan bool
+	listenWait sync.WaitGroup
 
 	// inner subscription
 	innerCh  chan Type
 	innerSub ethereum.Subscription
 
 	// outer subscription
-	outerCh chan Type
-	errorCh chan error // needs to be listened or it will block
-
-	// the latest header context
-	// this context is refreshed when a new header is received
-	// this context is passed to strategies to allow them stop whenever a new header is received
-	headerMutex     sync.RWMutex
-	headerCtx       context.Context
-	headerCtxCancel context.CancelFunc
+	outerCh chan ItemWithContext[Type]
+	errorCh chan error
 }
 
 // NewSubscription creates a new client subscription
 func NewSubscription[Type any](c RPCClientDispatcher, namespace string, timeout time.Duration, maxRetries int) *Subscription[Type] {
-	listenCtx, listenCancel := context.WithCancel(context.Background())
 	return &Subscription[Type]{
 		// connection
 		c:          c,
+		m:          sync.RWMutex{},
 		namespace:  namespace,
 		timeout:    timeout,
 		maxRetries: maxRetries,
 
-		// listener context
-		listenCtx:    listenCtx,
-		listenCancel: listenCancel,
+		// listener
+		stopListen: make(chan bool),
+		listenWait: sync.WaitGroup{},
 
 		// inner subscription
 		innerCh:  make(chan Type),
 		innerSub: nil,
 
 		// outer subscription
-		outerCh: make(chan Type),
-		errorCh: make(chan error),
-
-		// the latest header context
-		headerCtx:       nil,
-		headerCtxCancel: nil,
+		outerCh: make(chan ItemWithContext[Type], 1),
+		errorCh: make(chan error, 1),
 	}
 }
 
@@ -83,12 +79,12 @@ func NewSubscription[Type any](c RPCClientDispatcher, namespace string, timeout 
 ///
 
 func (c *Subscription[Type]) Subscribe(ctx context.Context) error {
-	c.headerMutex.Lock()
-
+	c.m.RLock()
 	// check if already subscribed
 	if c.innerSub != nil {
 		return AlreadySubscribedError
 	}
+	c.m.RUnlock()
 
 	// subscribe to headers
 	if err := c.subscribe(ctx); err != nil {
@@ -96,65 +92,62 @@ func (c *Subscription[Type]) Subscribe(ctx context.Context) error {
 	}
 
 	// listen for new headers
-	c.headerMutex.Unlock()
 	go c.listen()
 	return nil
 }
 
 func (c *Subscription[Type]) Unsubscribe() {
-	c.headerMutex.Lock()
-	defer c.headerMutex.Unlock()
-
+	c.m.RLock()
 	// check if already unsubscribed
 	if c.innerSub == nil {
 		return
 	}
+	c.m.RUnlock()
 
 	// unsubscribe
 	c.unsubscribe()
 }
 
+// subscribe creates a new subscription
+// requires mutex to be locked
 func (c *Subscription[Type]) subscribe(ctx context.Context) error {
-	// refresh the header context
-	c.refreshHeaderContext(false)
-
-	// close the subscription if it exists
-	if c.innerSub != nil {
-		c.unsubscribe()
-	}
+	c.m.Lock()
+	defer c.m.Unlock()
 
 	// create a new subscription
 	var err error
 	c.innerCh = make(chan Type)
-	c.innerSub, err = c.c.Subscribe(ctx, c.namespace, c.innerCh)
+	c.innerSub, err = c.c.EthSubscribe(ctx, c.innerCh, c.namespace)
 	if err != nil {
-		c.unsubscribe()
 		return err
 	}
 
-	// create a new listener context
-	c.listenCtx, c.listenCancel = context.WithCancel(ctx)
 	return nil
 }
 
-func (c *Subscription[Type]) resubscribe(ctx context.Context) bool {
+// resubscribe attempts to resubscribe to the headers
+// it returns true if the re-subscription was successful
+func (c *Subscription[Type]) resubscribe() bool {
 	retryCount := 0
 
 	// attempt to resubscribe
 	for retryCount < c.maxRetries {
-		// check if listener is canceled
-		if c.listenCtx.Err() != nil {
-			return false
-		}
-
 		// exponential backoff
 		time.Sleep(exponentialBackoff(retryCount, MaxReconnectTimeout))
 		retryCount++
 
+		// create a new context
+		tmpCtx, tmpCancel := context.WithTimeout(context.Background(), c.timeout)
+
+		// subscribe again
+		err := c.subscribe(tmpCtx)
+
 		// resubscribe to headers
-		if err := c.subscribe(ctx); err != nil {
+		tmpCancel()
+		if err != nil {
 			// send the error
 			c.errorCh <- err
+			c.unsubscribe()
 		} else {
 			return true
 		}
@@ -165,19 +158,16 @@ func (c *Subscription[Type]) resubscribe(ctx context.Context) bool {
 	return false
 }
 
+// unsubscribe closes the subscription, and the channels
+// it also stops the listener
+// it disposes the struct
 func (c *Subscription[Type]) unsubscribe() {
-	// cancel the header context
-	if c.headerCtx != nil {
-		c.headerCtxCancel()
-	}
+	c.m.Lock()
+	defer c.m.Unlock()
 
-	// cancel the listener context
-	if c.listenCtx != nil {
-		c.listenCancel()
-	}
-
-	// wait for the listener to stop
-	<-c.listenCtx.Done()
+	// stop the listener
+	c.stopListen <- true
+	c.listenWait.Wait()
 
 	// close the subscription
 	if c.innerSub != nil {
@@ -188,45 +178,61 @@ func (c *Subscription[Type]) unsubscribe() {
 	// close the channels
 	close(c.outerCh)
 	close(c.errorCh)
-
-	// cleanup
-	c.innerSub = nil
-	c.innerCh = nil
-	c.outerCh = nil
-	c.errorCh = nil
 }
 
+// listen listens for new headers
+// it stops listening if requested
+// it also resubscribes if the subscription is closed
 func (c *Subscription[Type]) listen() {
+	c.listenWait.Add(1)
+	defer c.listenWait.Done()
+
+	// create a new context
+	// this context gets cancelled when a new item is received
+	ctx, cancel := context.WithCancel(context.Background())
+
 	// listen for new headers
 	for {
 		select {
-		case <-c.listenCtx.Done():
-			return // stop listening if the context is canceled
-		case err := <-c.innerSub.Err():
-			// refresh the header context
-			c.refreshHeaderContext(false)
+		case <-c.stopListen:
+			// cancel the context
+			cancel()
+			return
+		default:
+			select {
+			case header := <-c.innerCh:
+				// cancel previous item context
+				cancel()
 
-			// send the error
-			if err != nil && c.errorCh != nil {
+				// create a new context
+				ctx, cancel = context.WithCancel(context.Background())
+
+				c.outerCh <- ItemWithContext[Type]{
+					Item:    header,
+					Context: ctx,
+				}
+			case err := <-c.innerSub.Err():
+				// cancel previous item context
+				cancel()
+
+				// send the error
 				c.errorCh <- err
-			}
 
-			// lock the header context
-			c.headerMutex.Lock()
+				// check if the error worth reconnecting
+				if errors.Is(err, context.Canceled) {
+					return
+				}
 
-			// try to resubscribe
-			if !c.resubscribe(c.listenCtx) {
-				// stop listening if max retries reached
-				c.unsubscribe()
-				c.headerMutex.Unlock()
-				return
-			}
-			c.headerMutex.Unlock()
-		case header := <-c.innerCh:
-			// refresh the header context & send the header
-			c.refreshHeaderContext(true)
-			if c.outerCh != nil && header != nil {
-				c.outerCh <- header
+				// lock the header context & try to resubscribe
+				ok := c.resubscribe()
+
+				if !ok {
+					// stop listening if max retries reached
+					c.unsubscribe()
+					return
+				}
+			default:
+				// silent
 			}
 		}
 	}
@@ -236,37 +242,26 @@ func (c *Subscription[Type]) listen() {
 /// Header Context
 ///
 
-func (c *Subscription[Type]) refreshHeaderContext(reset bool) {
-	c.headerMutex.Lock()
-	defer c.headerMutex.Unlock()
-
-	// listenCancel the old context
-	if c.headerCtxCancel != nil {
-		c.headerCtxCancel()
-	}
-
-	// create a new context
-	if reset {
-		c.headerCtx, c.headerCtxCancel = context.WithCancel(context.Background())
-	}
-}
-
-func (c *Subscription[Type]) HeaderContext() context.Context {
-	c.headerMutex.RLock()
-	defer c.headerMutex.RUnlock()
-	return c.headerCtx
-}
-
 ///
 /// Results
 ///
 
-func (c *Subscription[Type]) Channel() <-chan Type {
+func (c *Subscription[Type]) Items() chan ItemWithContext[Type] {
+	c.m.RLock()
+	defer c.m.RUnlock()
 	return c.outerCh
 }
 
-func (c *Subscription[Type]) Error() <-chan error {
+func (c *Subscription[Type]) Err() <-chan error {
+	c.m.RLock()
+	defer c.m.RUnlock()
 	return c.errorCh
+}
+
+func (c *Subscription[Type]) InnerSub() ethereum.Subscription {
+	c.m.RLock()
+	defer c.m.RUnlock()
+	return c.innerSub
 }
 
 ///
