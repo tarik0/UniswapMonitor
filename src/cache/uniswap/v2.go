@@ -19,15 +19,6 @@ import (
 	"unicode"
 )
 
-var (
-	TokenAlreadyExists = errors.New("token already exists in cache")
-	TokenNotFound      = errors.New("token not found")
-	InvalidToken       = errors.New("invalid token")
-	InvalidFactory     = errors.New("invalid factory")
-	PoolNotFound       = errors.New("pool not found")
-	BlockAlreadySynced = errors.New("block already synced")
-)
-
 type V2Cache struct {
 	tokens    map[common.Address]token.ERC20
 	pools     map[common.Address]pool.Pool[uniswap.Reserves, any]

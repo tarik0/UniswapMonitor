@@ -5,13 +5,29 @@ import (
 	"PoolHelper/src/multicall/generic"
 	unipool "PoolHelper/src/pool/uniswap"
 	"PoolHelper/src/structs/factory"
+	"PoolHelper/src/structs/subscription"
 	"context"
+	"errors"
 	"fmt"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/ethereum/go-ethereum/rpc"
 	"strings"
 	"time"
+)
+
+///
+/// Constants & Utils
+///
+
+const (
+	Endpoint   = "wss://eth-mainnet.g.alchemy.com/v2/eZfGimfTzIDjI1fXKlc9nZX6xmsNmzvb"
+	Timeout    = 20 * time.Second
+	MaxTimeout = 30 * time.Second
+	MaxRetries = 5
+	CallCost   = 25_000
+	MaxGas     = 30_000_000
 )
 
 var tokenList = []common.Address{
@@ -78,6 +94,11 @@ var v2Factories = []factory.Factory[any]{
 		Address:  common.HexToAddress("0xc0aee478e3658e2610c5f7a4a2e1777ce9e4f2ac"),
 		InitHash: common.HexToHash("0xe18a34eb0e04b04f7a0ac29a6e80748dca96319b42c54d679cb821dca90c6303"),
 	},
+	{
+		Name:     "FraxSwap",
+		Address:  common.HexToAddress("0xC14d550632db8592D1243Edc8B95b0Ad06703867"),
+		InitHash: common.HexToHash("0x4ce0b4ab368f39e4bd03ec712dfc405eb5a36cdb0294b3887b441cd1c743ced3"),
+	},
 }
 
 var v3Factories = []factory.Factory[unipool.V3FeeType]{
@@ -104,19 +125,24 @@ func newCaller(c *ethclient.Client) *generic.MulticallContract {
 
 	return generic.NewCaller(
 		common.HexToAddress("0xcA11bde05977b3631167028862bE2a173976CA11"),
-		30_000,
-		30_000_000,
+		CallCost,
+		MaxGas,
 		cAbi,
 		c,
 	)
 }
 
+///
+/// Main
+///
+
 func main() {
 	// connect to RPC client
-	client, err := ethclient.Dial("wss://ethereum.publicnode.com")
+	rpcClient, err := rpc.Dial(Endpoint)
 	if err != nil {
 		panic(err)
 	}
+	client := ethclient.NewClient(rpcClient)
 
 	// create multicall
 	m := newCaller(client)
@@ -125,7 +151,7 @@ func main() {
 	cV2 := uniswap.NewV2Cache()
 	cV3 := uniswap.NewV3Cache()
 
-	// get latest block
+	// get the latest block
 	block, err := client.BlockByNumber(context.Background(), nil)
 	if err != nil {
 		panic(err)
@@ -153,20 +179,27 @@ func main() {
 	fmt.Println("=========================================")
 
 	// initialize pools for each cache
+	oldCount := 0
 	for _, f := range v2Factories {
 		initStart := time.Now()
 		if err := cV2.InitializePools(f); err != nil {
 			panic(err)
 		}
-		fmt.Printf("(V2) Initialized %d pools for %s in %s\n", len(cV2.Pools()), f.Name, time.Since(initStart))
+		fmt.Printf("(V2) Initialized %d pools for %s in %s\n", len(cV2.Pools())-oldCount, f.Name, time.Since(initStart))
+		oldCount = len(cV2.Pools())
 	}
+	oldCount = 0
 	for _, f := range v3Factories {
 		initStart := time.Now()
 		if err := cV3.InitializePools(f); err != nil {
 			panic(err)
 		}
-		fmt.Printf("(V3) Initialized %d pools for %s in %s\n", len(cV3.Pools()), f.Name, time.Since(initStart))
+		fmt.Printf("(V3) Initialized %d pools for %s in %s\n", len(cV2.Pools())-oldCount, f.Name, time.Since(initStart))
+		oldCount = len(cV2.Pools())
 	}
+	fmt.Println("Total pools:", len(cV2.Pools())+len(cV3.Pools()))
+	fmt.Println("Total V2 pools:", len(cV2.Pools()))
+	fmt.Println("Total V3 pools:", len(cV3.Pools()))
 	fmt.Println()
 
 	fmt.Println("=========================================")
@@ -187,5 +220,55 @@ func main() {
 	fmt.Printf("(V3) Synced %d pools in %s\n", len(cV3.Pools()), time.Since(syncStart))
 	fmt.Println()
 
-	_ = block
+	fmt.Println("=========================================")
+	fmt.Println("=          Subscribe to Blocks          =")
+	fmt.Println("=========================================")
+
+	// create subscription
+	sub := subscription.NewBlockSubscription(rpcClient, Timeout, MaxTimeout, MaxRetries)
+	if err = sub.Subscribe(context.Background()); err != nil {
+		panic(err)
+	}
+
+	// listen for new blocks
+	lastBlock := block.NumberU64()
+	for {
+		select {
+		case _err := <-sub.Err():
+			fmt.Println(fmt.Errorf("subscription error: %s", _err))
+		case header := <-sub.Items():
+			// check if the block number has changed
+			if header.Item.Number.Uint64() == lastBlock {
+				continue
+			}
+
+			// update the last block number
+			lastBlock = header.Item.Number.Uint64()
+			headerCtx := header.Context
+
+			fmt.Println("")
+			fmt.Println("=========================================")
+			fmt.Println("Block:", lastBlock)
+
+			// sync reserves for each cache
+			syncStart = time.Now()
+			if err := cV2.SyncAll(headerCtx, m, lastBlock); err != nil {
+				if errors.Is(err, context.Canceled) {
+					fmt.Println("block passed")
+					continue
+				}
+				panic(err)
+			}
+			fmt.Printf("(V2) Synced %d pools in %s\n", len(cV2.Pools()), time.Since(syncStart))
+			syncStart = time.Now()
+			if err := cV3.SyncAll(context.Background(), m, lastBlock); err != nil {
+				if errors.Is(err, context.Canceled) {
+					fmt.Println("block passed")
+					continue
+				}
+				panic(err)
+			}
+			fmt.Printf("(V3) Synced %d pools in %s\n", len(cV3.Pools()), time.Since(syncStart))
+		}
+	}
 }
