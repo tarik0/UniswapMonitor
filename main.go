@@ -22,7 +22,7 @@ import (
 ///
 
 const (
-	Endpoint   = "wss://eth-mainnet.g.alchemy.com/v2/eZfGimfTzIDjI1fXKlc9nZX6xmsNmzvb"
+	Endpoint   = "wss://eth-mainnet.g.alchemy.com/v2/bruh"
 	Timeout    = 20 * time.Second
 	MaxTimeout = 30 * time.Second
 	MaxRetries = 5
